@@ -1,0 +1,10 @@
+node_modules
+.editorconfig
+.vscode
+dist
+__pycache__
+data
+fake_editdistance
+models
+venv
+.env
