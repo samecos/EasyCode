@@ -375,7 +375,7 @@
         v-model:value="editingCode"
         language="python"
         theme="vs-dark"
-        :options="{ minimap: { enabled: false }, fontSize: 13, tabSize: 4 }"
+        :options="{ minimap: { enabled: false }, fontSize: 13, tabSize: 4, automaticLayout: true }"
       />
     </div>
     <!-- AI 对话输入区 -->
@@ -894,7 +894,20 @@ const parseVulnerableJson = (rawStr: string) => {
     if(clean.startsWith('```json')) clean = clean.substring(7);
     if(clean.startsWith('```')) clean = clean.substring(3);
     if(clean.endsWith('```')) clean = clean.substring(0, clean.length - 3);
-    return JSON.parse(clean.trim());
+    const parsed = JSON.parse(clean.trim());
+    
+    // 强制把参数默认值转为字符串，避免 el-input 在组件挂载时抛出 Invalid prop Expected String got Boolean
+    if (parsed && Array.isArray(parsed.parameters)) {
+        parsed.parameters.forEach((p: any) => {
+            if (p.default !== undefined && p.default !== null) {
+                p.default = String(p.default);
+            } else {
+                p.default = '';
+            }
+        });
+    }
+    
+    return parsed;
 }
 
 const handleRefine = async () => {

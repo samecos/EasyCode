@@ -9,3 +9,5 @@ pandas
 numpy
 sherpa-onnx
 imageio-ffmpeg
+openpyxl
+plotly
