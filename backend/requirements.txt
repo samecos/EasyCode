@@ -1,7 +1,7 @@
 fastapi
 uvicorn
 pydantic
-pydantic-settings
+pydantic-settings[dotenv]
 anthropic
 tiktoken
 python-multipart
