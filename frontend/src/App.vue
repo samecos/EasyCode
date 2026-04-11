@@ -183,6 +183,9 @@
                     ▶ 演示执行
                   </el-button>
                 </el-button-group>
+                <el-button size="small" type="primary" plain @click.stop="openPlanForNode(props.id)" title="唤醒此节点的方案复核看板">
+                  🪧 方案
+                </el-button>
                 <el-button size="small" type="info" plain @click.stop="openNodeDir(props.data.paramValues)" title="尝试调用底层操作系统浏览器打开此节点约定的工作输出目录 (需参数中有 work_dir 等变量)">
                   📁 目录
                 </el-button>
@@ -280,7 +283,7 @@
   </el-dialog>
 
   <!-- Plan 确认看板 -->
-  <el-dialog v-model="planDialogVisible" title="工程师方案复核 (Interactive Planner)" width="60%" draggable :modal="false" append-to-body>
+  <el-dialog v-model="planDialogVisible" title="工程师方案复核 (Interactive Planner)" width="60%" draggable :modal="false" append-to-body @close="editingPlanNodeId = ''">
     <div class="max-h-[65vh] overflow-y-auto pr-2 pb-1">
       <div v-if="currentPlan" class="text-sm text-gray-700 space-y-4">
         <!-- 手工编辑步骤 -->
@@ -360,7 +363,7 @@
     </div>
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="planDialogVisible = false">丢弃当前方案</el-button>
+        <el-button @click="closePlanDialog">丢弃当前方案</el-button>
         <el-button type="success" @click="confirmPlan" :loading="isGenerating">
           ✅ 确认最终方案并生成底层代码
         </el-button>
@@ -551,6 +554,7 @@ const currentIsError = ref(false)
 const planDialogVisible = ref(false)
 const currentPlan = ref<any>(null)
 const unconfirmedPrompt = ref('')
+const editingPlanNodeId = ref('')
 
 const refineMsg = ref('')
 const isRefining = ref(false)
@@ -942,6 +946,7 @@ const handleSend = async () => {
   const prompt = inputMsg.value
   inputMsg.value = ''
   
+  editingPlanNodeId.value = ''
   unconfirmedPrompt.value = prompt
   chatLogs.value.push({ role: 'user', content: prompt })
   isPlanning.value = true
@@ -984,31 +989,48 @@ const confirmPlan = async () => {
       })
     }
     
-    const newNodeId = `node_${Date.now().toString(36)}_${nodeCounter++}`
-    const newNode = {
-      id: newNodeId,
-      type: 'python',
-      position: { x: 300, y: 10 + (nodeCounter - 1) * 230 },
-      data: {
-        label: unconfirmedPrompt.value.length > 15 ? unconfirmedPrompt.value.substring(0, 15) + '...' : unconfirmedPrompt.value,
-        prompt: unconfirmedPrompt.value,
-        code: pythonCode,
-        parameters: currentPlan.value.parameters,
-        dependencies: currentPlan.value.dependencies || [],
-        steps: currentPlan.value.steps || [],
-        activeStep: -1,
-        paramValues: paramValues,
-        running: false,
-        output: null,
-        isError: false
+    if (editingPlanNodeId.value) {
+      const existingNode = nodes.value.find(n => n.id === editingPlanNodeId.value)
+      if (existingNode) {
+        existingNode.data.code = pythonCode;
+        existingNode.data.parameters = currentPlan.value.parameters;
+        existingNode.data.dependencies = currentPlan.value.dependencies || [];
+        existingNode.data.steps = currentPlan.value.steps || [];
+        existingNode.data.prompt = unconfirmedPrompt.value;
+        for (const key in paramValues) {
+          if (!(key in existingNode.data.paramValues)) {
+            existingNode.data.paramValues[key] = paramValues[key];
+          }
+        }
       }
+      editingPlanNodeId.value = ''
+    } else {
+      const newNodeId = `node_${Date.now().toString(36)}_${nodeCounter++}`
+      const newNode = {
+        id: newNodeId,
+        type: 'python',
+        position: { x: 300, y: 10 + (nodeCounter - 1) * 230 },
+        data: {
+          label: unconfirmedPrompt.value.length > 15 ? unconfirmedPrompt.value.substring(0, 15) + '...' : unconfirmedPrompt.value,
+          prompt: unconfirmedPrompt.value,
+          code: pythonCode,
+          parameters: currentPlan.value.parameters,
+          dependencies: currentPlan.value.dependencies || [],
+          steps: currentPlan.value.steps || [],
+          activeStep: -1,
+          paramValues: paramValues,
+          running: false,
+          output: null,
+          isError: false
+        }
+      }
+      nodes.value.push(newNode)
+      
+      if (prevNodeId) {
+         edges.value.push({ id: `e${prevNodeId}-${newNodeId}`, source: prevNodeId, target: newNodeId })
+      }
+      prevNodeId = newNodeId
     }
-    nodes.value.push(newNode)
-    
-    if (prevNodeId) {
-       edges.value.push({ id: `e${prevNodeId}-${newNodeId}`, source: prevNodeId, target: newNodeId })
-    }
-    prevNodeId = newNodeId
     
     planDialogVisible.value = false
 
@@ -1017,6 +1039,27 @@ const confirmPlan = async () => {
   } finally {
     isGenerating.value = false
   }
+}
+
+const closePlanDialog = () => {
+  planDialogVisible.value = false;
+  editingPlanNodeId.value = '';
+}
+
+const openPlanForNode = (nodeId: string) => {
+  const node = nodes.value.find(n => n.id === nodeId)
+  if (!node) return
+  
+  editingPlanNodeId.value = nodeId
+  unconfirmedPrompt.value = node.data.prompt || ''
+  
+  currentPlan.value = {
+    steps: JSON.parse(JSON.stringify(node.data.steps || [])),
+    parameters: JSON.parse(JSON.stringify(node.data.parameters || [])),
+    dependencies: JSON.parse(JSON.stringify(node.data.dependencies || []))
+  }
+  
+  planDialogVisible.value = true
 }
 
 const addTestNode = () => {
